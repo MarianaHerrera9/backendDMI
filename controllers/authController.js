@@ -30,7 +30,7 @@ exports.register = async (req, res) => {
         const hashed = await bcrypt.hash(password, salt);
 
         const user = await userModel.createUser({ email, password: hashed, name });
-        return res.status(201).json({ message: 'Usuario creado', user: { id: user.id, email } });
+        return res.status(201).json({ message: 'Usuario creado', user: { id: user.id, email, name } });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Error del servidor' });
@@ -61,7 +61,8 @@ exports.login = async (req, res) => {
         return res.json({
             accessToken,
             refreshToken,
-            expiresIn: ACCESS_EXPIRES
+            expiresIn: ACCESS_EXPIRES,
+            user: { id: user.id, email: user.email, name: user.name }
         });
     } catch (err) {
         console.error(err);
