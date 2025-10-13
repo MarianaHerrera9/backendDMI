@@ -3,6 +3,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const userModel = require('../models/userModel');
 const rtModel = require('../models/refreshTokenModel');
+const {findUserByEmail} = require("../models/userModel");
+const otpModel = require("../models/otpModel");
+const {sendEmail} = require("../services/mailService");
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -40,30 +43,28 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await userModel.findUserByEmail(email);
+        const user = await findUserByEmail(email);
         if (!user) return res.status(401).json({ message: 'Credenciales inválidas' });
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(401).json({ message: 'Credenciales inválidas' });
 
-        const accessToken = generateAccessToken(user);
-        const refreshToken = generateRefreshToken(user);
+        // Generar OTP (6 dígitos)
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutos
 
-        const expiresAt = new Date(Date.now() + REFRESH_DAYS * 24 * 60 * 60 * 1000);
-        await rtModel.saveRefreshToken({
-            userId: user.id,
-            token: refreshToken,
-            expiresAt,
-            ip: req.ip,
-            ua: req.get('User-Agent')
+        // Guardar OTP en la BD
+        await otpModel.saveOtp({ userId: user.id, otpCode, expiresAt });
+
+        // Enviar por correo con SendGrid
+        await sendEmail({
+            to: user.email,
+            subject: 'Tu código de verificación',
+            text: `Tu código OTP es ${otpCode}. Expira en 5 minutos.`,
+            html: `<p>Tu código OTP es <strong>${otpCode}</strong>. Expira en 5 minutos.</p>`,
         });
 
-        return res.json({
-            accessToken,
-            refreshToken,
-            expiresIn: ACCESS_EXPIRES,
-            user: { id: user.id, email: user.email, name: user.name }
-        });
+        return res.json({ message: 'OTP enviado a tu correo', userId: user.id });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Error del servidor' });
