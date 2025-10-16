@@ -19,7 +19,7 @@ async function authenticate(req, res, next) {
         if (!user) return res.status(401).json({ message: 'Usuario no encontrado' });
 
         // adjuntamos info útil al req
-        req.user = { id: user.id, email: user.email };
+        req.user = { id: user.id, email: user.email, role: user.role || 'user' };
         next();
     } catch (err) {
         console.error(err);

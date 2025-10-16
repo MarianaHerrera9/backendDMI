@@ -2,19 +2,8 @@ const jwt = require('jsonwebtoken');
 const userModel = require('../models/userModel');
 const rtModel = require('../models/refreshTokenModel');
 const otpModel = require('../models/otpModel');
-
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-const ACCESS_EXPIRES = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
-const REFRESH_DAYS = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30', 10);
-
-function generateAccessToken(user) {
-    return jwt.sign({ sub: user.id, email: user.email }, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
-}
-
-function generateRefreshToken(user) {
-    return jwt.sign({ sub: user.id }, REFRESH_SECRET, { expiresIn: `${REFRESH_DAYS}d` });
-}
+const {generateAccessToken, generateRefreshTokenPlain, hashToken, REFRESH_DAYS} = require("../utils/token");
+const audit = require('../services/auditService');
 
 exports.verifyOtp = async (req, res) => {
     try {
@@ -22,31 +11,45 @@ exports.verifyOtp = async (req, res) => {
         if (!userId || !otpCode)
             return res.status(400).json({ message: 'Faltan campos (userId, otpCode)' });
 
-        const validOtp = await otpModel.findValidOtp(userId, otpCode);
-        if (!validOtp) return res.status(400).json({ message: 'OTP inválido o expirado' });
+        const otpHash = hashToken(otpCode);
+        const validOtp = await otpModel.findValidOtp(userId, otpHash);
 
-        await otpModel.markOtpAsUsed(userId, otpCode);
+        if (!validOtp) {
+            await audit.log({ userId, action: 'OTP_FAILED', description: 'OTP inválido o expirado', ip: req.ip, ua: req.get('User-Agent')});
+            return res.status(400).json({ message: 'OTP inválido o expirado' });
+        }
+
+        if (validOtp.attempts >= 5) {
+            await otpModel.markOtpAsUsed(userId, otpHash); // bloquear
+            await audit.log({ userId, action: 'OTP_BLOCKED', description: 'OTP bloqueado por demasiados intentos', ip: req.ip, ua: req.get('User-Agent')});
+            return res.status(429).json({ message: 'OTP bloqueado, solicita uno nuevo' });
+        }
+
+        await otpModel.markOtpAsUsed(userId, otpHash);
 
         const user = await userModel.findUserById(userId);
         if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
-        // Generar tokens
         const accessToken = generateAccessToken(user);
-        const refreshToken = generateRefreshToken(user);
+        const refreshPlain = generateRefreshTokenPlain();
+        const refreshHash = hashToken(refreshPlain);
         const expiresAt = new Date(Date.now() + REFRESH_DAYS * 24 * 60 * 60 * 1000);
+
 
         await rtModel.saveRefreshToken({
             userId: user.id,
-            token: refreshToken,
+            tokenHash: refreshHash,
             expiresAt,
             ip: req.ip,
             ua: req.get('User-Agent'),
         });
 
+        await audit.log({ userId: user.id, action: 'OTP_VERIFIED', description: 'OTP verificado, sesión iniciada', ip: req.ip, ua: req.get('User-Agent')});
+
         return res.json({
             message: 'Autenticación completada',
             accessToken,
-            refreshToken,
+            refreshToken: refreshPlain,
             user: { id: user.id, email: user.email, name: user.name },
         });
     } catch (err) {
