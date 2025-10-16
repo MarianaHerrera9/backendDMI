@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const authController = require('../controllers/authController');
+const otpController = require('../controllers/otpController');
 
 router.post(
     '/register',
@@ -13,6 +14,8 @@ router.post(
 );
 
 router.post('/login', authController.login);
+
+router.post('/verify-otp', otpController.verifyOtp);
 
 router.post('/refresh', authController.refresh);
 
