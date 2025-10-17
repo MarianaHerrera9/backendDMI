@@ -34,6 +34,22 @@
 - 📡 Evitar probar o ejecutar la app en redes públicas no seguras.
 - 🧾 Documentar cualquier cambio que afecte la seguridad del sistema.
 
+--
+
+## Cifrado de datos en reposo (AES-256)
+
+Los datos sensibles almacenados en la base de datos se cifran con el algoritmo AES-256 mediante la función encryptData() del módulo crypto.js.
+Esto garantiza que, incluso si la base de datos es comprometida, la información no pueda ser interpretada sin la clave de cifrado definida en el entorno (.env).
+
+---
+
+## Políticas de minimización y portabilidad (GDPR)
+Minimización: Solo se recopilan los datos estrictamente necesarios para el funcionamiento del sistema (nombre, correo y contraseña).
+Retención limitada: Los datos se conservan únicamente durante el tiempo necesario.
+Portabilidad: Los usuarios pueden solicitar la exportación o eliminación de sus datos.
+El backend puede descifrar la información con decryptData() para cumplir con solicitudes de acceso conforme al GDPR.
+Protección en reposo: Toda la información sensible se almacena cifrada con AES-256, y las contraseñas se protegen con bcryptjs antes de guardarse.
+
 ---
 
 ## 🧠 Recomendaciones futuras
